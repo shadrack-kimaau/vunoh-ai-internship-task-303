@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Vunoh Global - AI Assistant</title>
+    <style>
+      body {
+        font-family: Arial, Helvetica, sans-serif;
+        margin: 24px;
+        color: #111;
+      }
+      textarea {
+        width: 100%;
+        min-height: 120px;
+        resize: vertical;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+      }
+      button {
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid #222;
+        background: #111;
+        color: #fff;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+      .card {
+        border: 1px solid #e7e7e7;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      .row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .muted {
+        color: #666;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+      }
+      th,
+      td {
+        border-bottom: 1px solid #eee;
+        padding: 10px 8px;
+        vertical-align: top;
+        text-align: left;
+        font-size: 14px;
+      }
+      th {
+        font-weight: 700;
+      }
+      select {
+        padding: 6px 8px;
+      }
+      .status-pill {
+        font-weight: 700;
+      }
+      .error {
+        color: #b00020;
+        margin-top: 8px;
+      }
+      .ok {
+        color: #0a7a2f;
+        margin-top: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vunoh Global - AI Internship Practical Test</h1>
+
+    <div class="card">
+      <h2>1) Describe your request</h2>
+      <p class="muted">
+        Example: “I need to send KES 15,000 to my mother in Kisumu urgently.”
+      </p>
+
+      <div class="row">
+        <div style="flex: 1">
+          <textarea
+            id="customerRequest"
+            placeholder="Type your request in plain English..."
+          ></textarea>
+        </div>
+      </div>
+
+      <div style="margin-top: 12px">
+        <button id="submitBtn">Submit to AI</button>
+        <div id="submitMsg"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>2) Task Dashboard</h2>
+      <p class="muted">
+        Shows intent, risk score, assigned team, and lets you update status.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Task Code</th>
+            <th>Intent</th>
+            <th>Status</th>
+            <th>Risk Score</th>
+            <th>Team</th>
+            <th>Created At</th>
+            <th>Update</th>
+          </tr>
+        </thead>
+        <tbody id="tasksTbody"></tbody>
+      </table>
+    </div>
+
+    <script>
+      const API_TASKS = "/api/tasks";
+      const API_ASSISTANT = "/api/assistant";
+      const STATUS_OPTIONS = ["PENDING", "IN_PROGRESS", "COMPLETED"];
+
+      function getClientId() {
+        const key = "client_id";
+        let id = localStorage.getItem(key);
+        if (!id) {
+          if (crypto.randomUUID) id = crypto.randomUUID();
+          else id = "client_" + Math.random().toString(16).slice(2);
+          localStorage.setItem(key, id);
+        }
+        return id;
+      }
+
+      async function fetchTasks() {
+        const res = await fetch(`${API_TASKS}?limit=50`);
+        if (!res.ok) throw new Error("Failed to load tasks");
+        const data = await res.json();
+        return data.tasks || [];
+      }
+
+      function renderTasks(tasks) {
+        const tbody = document.getElementById("tasksTbody");
+        tbody.innerHTML = "";
+
+        if (tasks.length === 0) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td colspan="7" class="muted">No tasks yet.</td>`;
+          tbody.appendChild(tr);
+          return;
+        }
+
+        for (const t of tasks) {
+          const tr = document.createElement("tr");
+          const createdAt = t.created_at ? new Date(t.created_at) : null;
+          const createdAtText = createdAt ? createdAt.toLocaleString() : "";
+
+          tr.innerHTML = `
+            <td>${t.task_code}</td>
+            <td>${t.intent}</td>
+            <td><span class="status-pill">${t.status}</span></td>
+            <td>${t.risk_score}</td>
+            <td>${t.assigned_team}</td>
+            <td>${createdAtText}</td>
+            <td>
+              <select data-task-status="${t.task_code}">
+                ${STATUS_OPTIONS.map((s) => `<option value="${s}" ${s === t.status ? "selected" : ""}>${s}</option>`).join(
+                  ""
+                )}
+              </select>
+              <button style="margin-left:8px" data-update-task="${t.task_code}">Update</button>
+            </td>
+          `;
+
+          tbody.appendChild(tr);
+        }
+
+        // Wire up update buttons after render.
+        tbody.querySelectorAll("button[data-update-task]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const taskCode = btn.getAttribute("data-update-task");
+            const select = tbody.querySelector(`select[data-task-status="${taskCode}"]`);
+            const status = select.value;
+
+            try {
+              btn.disabled = true;
+              const res = await fetch(`/api/tasks/${taskCode}/status`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ status }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (!res.ok) throw new Error(data.error || "Status update failed");
+              await refreshUI();
+            } catch (e) {
+              alert(e.message || "Status update failed");
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
+      }
+
+      async function refreshUI() {
+        const tasks = await fetchTasks();
+        renderTasks(tasks);
+      }
+
+      async function submitToAI() {
+        const submitBtn = document.getElementById("submitBtn");
+        const msgEl = document.getElementById("submitMsg");
+        msgEl.textContent = "";
+        msgEl.className = "";
+
+        const requestText = document.getElementById("customerRequest").value.trim();
+        if (!requestText) {
+          msgEl.textContent = "Please type a request first.";
+          msgEl.className = "error";
+          return;
+        }
+
+        const clientId = getClientId();
+        try {
+          submitBtn.disabled = true;
+          const res = await fetch(API_ASSISTANT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ customer_request: requestText, client_id: clientId }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "Request failed");
+          msgEl.textContent = "Submitted. Task created.";
+          msgEl.className = "ok";
+          document.getElementById("customerRequest").value = "";
+          await refreshUI();
+        } catch (e) {
+          msgEl.textContent = e.message || "Request failed";
+          msgEl.className = "error";
+        } finally {
+          submitBtn.disabled = false;
+        }
+      }
+
+      document.getElementById("submitBtn").addEventListener("click", submitToAI);
+      refreshUI().catch((e) => alert(e.message || "Failed to load dashboard"));
+    </script>
+  </body>
+</html>
+
