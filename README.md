@@ -89,18 +89,3 @@ The generated file will be `sql_dump.sql` at the project root.
 - **One decision I overrode**: Instead of “just trust the model output”, I added server-side normalization (e.g., `amount_kes` normalization and SMS length enforcement) and a heuristics fallback. This reduces demo-breaking failures during evaluation.
 - **One thing that didn’t work as expected**: Some providers wrap JSON in extra text. I fixed this by extracting the first JSON object from the model output and retrying once with a stricter instruction.
 
-
-
-pip install -r requirements.txt
-python manage.py migrate
-python manage.py seed_sample_tasks --min 5
-python manage.py export_sql_dump --output sql_dump.sql
-python manage.py runserver
-
-Before you submit (quick checklist)
-SQL dump file exists in repo: confirm sql_dump.sql is present (generated via python manage.py export_sql_dump --output sql_dump.sql).
-At least 5 sample tasks: run python manage.py seed_sample_tasks --min 5 (you already have 5+ now).
-README is complete: includes setup + “Decisions I made and why” (done).
-LLM API key (recommended): set AI_API_KEY (or OPENAI_API_KEY) so reviewers see real LLM behavior (intent/steps/messages). Without it, the app still works via fallbacks, but it’s safer to demonstrate the real AI path.
-One important note
-Your workspace is not currently a git repo, so make sure you initialize git, commit everything (including sql_dump.sql), and push to GitHub before submitting the link.
