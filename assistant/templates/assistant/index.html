@@ -74,6 +74,44 @@
         color: #0a7a2f;
         margin-top: 8px;
       }
+      .modal-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.45);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+      .modal {
+        width: min(920px, 100%);
+        max-height: 85vh;
+        overflow: auto;
+        background: #fff;
+        border-radius: 14px;
+        border: 1px solid #e7e7e7;
+        padding: 16px;
+      }
+      .modal pre {
+        background: #fafafa;
+        border: 1px solid #eee;
+        border-radius: 10px;
+        padding: 12px;
+        overflow: auto;
+        font-size: 13px;
+      }
+      .modal h3 {
+        margin: 14px 0 6px;
+      }
+      .pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid #ddd;
+        background: #fafafa;
+        font-size: 12px;
+        margin-left: 8px;
+      }
     </style>
   </head>
   <body>
@@ -115,11 +153,44 @@
             <th>Risk Score</th>
             <th>Team</th>
             <th>Created At</th>
-            <th>Update</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody id="tasksTbody"></tbody>
       </table>
+    </div>
+
+    <div id="modalOverlay" class="modal-overlay" role="dialog" aria-modal="true">
+      <div class="modal">
+        <div class="row" style="justify-content: space-between; align-items: center">
+          <div>
+            <h2 style="margin: 0">Task Details <span id="modalTaskCode" class="pill"></span></h2>
+            <div id="modalMeta" class="muted" style="margin-top: 6px"></div>
+          </div>
+          <button id="modalCloseBtn" type="button">Close</button>
+        </div>
+
+        <h3>Customer Request</h3>
+        <div id="modalCustomerRequest"></div>
+
+        <h3>Extracted Entities</h3>
+        <pre id="modalEntities"></pre>
+
+        <h3>Step Plan</h3>
+        <div id="modalSteps"></div>
+
+        <h3>Confirmation Messages</h3>
+        <h4 style="margin: 8px 0 4px">WhatsApp</h4>
+        <pre id="modalMsgWhatsApp"></pre>
+        <h4 style="margin: 8px 0 4px">Email</h4>
+        <div class="muted" id="modalMsgEmailSubject"></div>
+        <pre id="modalMsgEmailBody"></pre>
+        <h4 style="margin: 8px 0 4px">SMS (<=160 chars)</h4>
+        <pre id="modalMsgSms"></pre>
+
+        <h3>Status History</h3>
+        <div id="modalHistory"></div>
+      </div>
     </div>
 
     <script>
@@ -169,6 +240,7 @@
             <td>${t.assigned_team}</td>
             <td>${createdAtText}</td>
             <td>
+              <button data-view-task="${t.task_code}">View</button>
               <select data-task-status="${t.task_code}">
                 ${STATUS_OPTIONS.map((s) => `<option value="${s}" ${s === t.status ? "selected" : ""}>${s}</option>`).join(
                   ""
@@ -180,6 +252,20 @@
 
           tbody.appendChild(tr);
         }
+
+        tbody.querySelectorAll("button[data-view-task]").forEach((btn) => {
+          btn.addEventListener("click", async () => {
+            const taskCode = btn.getAttribute("data-view-task");
+            try {
+              btn.disabled = true;
+              await openTaskModal(taskCode);
+            } catch (e) {
+              alert(e.message || "Failed to load task");
+            } finally {
+              btn.disabled = false;
+            }
+          });
+        });
 
         // Wire up update buttons after render.
         tbody.querySelectorAll("button[data-update-task]").forEach((btn) => {
@@ -210,6 +296,59 @@
       async function refreshUI() {
         const tasks = await fetchTasks();
         renderTasks(tasks);
+      }
+
+      function setModalOpen(open) {
+        const overlay = document.getElementById("modalOverlay");
+        overlay.style.display = open ? "flex" : "none";
+      }
+
+      function safeJsonPretty(obj) {
+        try {
+          return JSON.stringify(obj ?? {}, null, 2);
+        } catch {
+          return String(obj ?? "");
+        }
+      }
+
+      async function openTaskModal(taskCode) {
+        const res = await fetch(`${API_TASKS}/${taskCode}`);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Failed to load task");
+
+        const t = data.task || {};
+        document.getElementById("modalTaskCode").textContent = t.task_code || taskCode;
+        document.getElementById("modalMeta").textContent = `${t.intent || ""} • ${t.status || ""} • Risk ${t.risk_score ?? ""} • Team ${t.assigned_team || ""}`;
+        document.getElementById("modalCustomerRequest").textContent = t.customer_request || "";
+
+        document.getElementById("modalEntities").textContent = safeJsonPretty(t.entities);
+
+        const steps = data.steps || [];
+        document.getElementById("modalSteps").innerHTML =
+          steps.length === 0
+            ? `<div class="muted">No steps saved.</div>`
+            : `<ol>${steps
+                .map((s) => `<li><strong>${s.step_order}.</strong> ${s.step_text}</li>`)
+                .join("")}</ol>`;
+
+        const msgs = data.messages || {};
+        document.getElementById("modalMsgWhatsApp").textContent = msgs.whatsapp || "";
+        document.getElementById("modalMsgEmailSubject").textContent = (msgs.email && msgs.email.subject) ? `Subject: ${msgs.email.subject}` : "";
+        document.getElementById("modalMsgEmailBody").textContent = (msgs.email && msgs.email.body) ? msgs.email.body : "";
+        document.getElementById("modalMsgSms").textContent = msgs.sms || "";
+
+        const hist = data.status_history || [];
+        document.getElementById("modalHistory").innerHTML =
+          hist.length === 0
+            ? `<div class="muted">No history yet.</div>`
+            : `<ul>${hist
+                .map((h) => {
+                  const d = h.changed_at ? new Date(h.changed_at).toLocaleString() : "";
+                  return `<li><strong>${h.old_status || "—"}</strong> → <strong>${h.new_status}</strong> <span class="muted">(${d}, ${h.changed_by})</span></li>`;
+                })
+                .join("")}</ul>`;
+
+        setModalOpen(true);
       }
 
       async function submitToAI() {
@@ -248,6 +387,10 @@
       }
 
       document.getElementById("submitBtn").addEventListener("click", submitToAI);
+      document.getElementById("modalCloseBtn").addEventListener("click", () => setModalOpen(false));
+      document.getElementById("modalOverlay").addEventListener("click", (e) => {
+        if (e.target && e.target.id === "modalOverlay") setModalOpen(false);
+      });
       refreshUI().catch((e) => alert(e.message || "Failed to load dashboard"));
     </script>
   </body>
