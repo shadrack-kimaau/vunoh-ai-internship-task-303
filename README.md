@@ -1,91 +1,229 @@
-## Vunoh Global | AI Internship Practical Test
+# AI-Powered Diaspora Task Orchestration System
+### Vunoh Global | AI Internship Practical Test
 
-AI-powered Django + vanilla JS web app that helps diaspora customers initiate and track:
-- sending money
-- hiring local services
-- verifying documents
-- airport transfers
-- checking task status
+This is an AI-powered Django web application that simulates a task orchestration assistant for Kenyans living in the diaspora. It allows users to submit natural language requests and automatically converts them into structured, trackable tasks with AI-driven intent extraction, risk scoring, workflow generation, and multi-channel communication.
 
-### Tech stack
-- **Backend**: Django
-- **Frontend**: HTML + CSS + vanilla JavaScript (no frameworks)
-- **Database**: SQLite (persistent `db.sqlite3`)
-- **AI brain**: OpenAI-compatible Chat Completions API (configurable)
+The system replaces informal WhatsApp-based coordination with structured, auditable workflows.
 
-### Setup (Windows / PowerShell)
-Create and activate a virtual environment (optional if you already have `.venv`):
+---
+
+## Core Features
+
+The system supports the following diaspora-related services:
+
+- Sending money to recipients back home
+- Hiring local services (cleaners, lawyers, errand runners, etc.)
+- Verifying documents (land titles, IDs, certificates)
+- Airport transfer requests
+- Task status tracking
+
+Each request is processed into a structured workflow with AI assistance.
+
+---
+
+## Tech Stack
+
+- **Backend**: Django (Python)
+- **Frontend**: HTML, CSS, Vanilla JavaScript (no frameworks)
+- **Database**: SQLite (`db.sqlite3`)
+- **AI Layer**: OpenAI-compatible Chat Completions API (optional, fallback enabled)
+
+---
+
+## System Architecture
+
+```
+User Input (Natural Language)
+        ↓
+AI Intent Extraction (LLM or fallback logic)
+        ↓
+Entity Parsing & Validation
+        ↓
+Risk Scoring Engine (0–100)
+        ↓
+Task Creation (Database Persistence)
+        ↓
+Workflow Step Generation
+        ↓
+Multi-Channel Message Generation
+(WhatsApp / Email / SMS)
+        ↓
+Employee Assignment (Finance / Legal / Operations)
+        ↓
+Task Dashboard (UI)
+```
+
+---
+
+## Setup Instructions (Windows / PowerShell)
+
+### 1. Create virtual environment (optional)
 
 ```bash
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install dependencies:
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Run migrations and start the server:
+### 3. Run migrations
 
 ```bash
 python manage.py migrate
+```
+
+### 4. Start server
+
+```bash
 python manage.py runserver
 ```
 
-Open the app at `http://127.0.0.1:8000/`.
+Open: [http://127.0.0.1:8000/](http://127.0.0.1:8000/)
 
-### AI configuration (optional)
-If you do **not** set an API key, the app falls back to deterministic heuristics for intent/entities and uses safe fallback generators for steps/messages.
+---
 
-Environment variables:
-- **AI_API_KEY** (or **OPENAI_API_KEY**): API key
-- **AI_BASE_URL**: OpenAI-compatible base URL (default `https://api.openai.com/v1`)
-- **AI_MODEL**: model name (default `gpt-4o-mini`)
+## AI Configuration (Optional)
 
-### Risk scoring logic (0–100)
-Risk is computed deterministically and saved per task. Key factors:
-- **Urgency** (“urgent/asap/immediately”): +20 (reduced time for verification)
-- **Returning customer history** (completion ratio for `client_id`):
-  - > 0.7: −15
-  - < 0.3 (and non-zero history): +10
-- **Send money**:
-  - amount >= 100,000: +30
-  - >= 50,000: +20
-  - >= 20,000: +10
-  - missing amount: +10 (uncertainty)
-  - missing recipient name: +15
-  - missing location/method details: +10 to +20
-- **Verify document**:
-  - land title / title deed: +40 (high-impact fraud risk)
-  - other docs: +25
-  - missing document reference: +10
-- **Hire service**:
-  - missing schedule date: +20
-  - missing service type/location: +10 each
-- **Check status**: generally low risk (+5), but missing task code adds uncertainty (+20)
+If no API key is provided, the system runs using deterministic fallback logic.
 
-### SQL dump (schema + 5 sample tasks)
-This repo includes a repeatable way to generate the required SQL dump:
+**Environment Variables:**
 
-1) Seed at least five sample tasks (with entities, steps, messages, assignment, risk score):
+| Variable | Description |
+|---|---|
+| `AI_API_KEY` or `OPENAI_API_KEY` | API key |
+| `AI_BASE_URL` | Default: `https://api.openai.com/v1` |
+| `AI_MODEL` | Default: `gpt-4o-mini` |
+
+---
+
+## Risk Scoring Logic (0–100)
+
+Risk scoring is deterministic and stored per task for auditability.
+
+### Key Factors
+
+**Urgency**
+- `urgent` / `asap` / `immediately` → +20
+
+**Customer History**
+- Completion ratio > 0.7 → -15
+- Completion ratio < 0.3 → +10
+
+**Send Money**
+- ≥ 100,000 KES → +30
+- ≥ 50,000 KES → +20
+- ≥ 20,000 KES → +10
+- Missing amount → +10
+- Missing recipient → +15
+- Missing details → +10 to +20
+
+**Document Verification**
+- Land title / title deed → +40
+- Other documents → +25
+- Missing reference → +10
+
+**Hire Service**
+- Missing schedule → +20
+- Missing service type/location → +10 each
+
+**Check Status**
+- Base → +5
+- Missing task code → +20
+
+---
+
+## Database Persistence
+
+All system outputs are stored in SQLite:
+
+- Tasks
+- Extracted entities
+- Risk scores
+- Workflow steps
+- Generated messages (WhatsApp, Email, SMS)
+- Employee assignments
+- Status updates
+
+### SQL Dump Generation
+
+**1. Seed sample tasks**
 
 ```bash
 python manage.py seed_sample_tasks --min 5
 ```
 
-2) Export the dump:
+**2. Export SQL dump**
 
 ```bash
 python manage.py export_sql_dump --output sql_dump.sql
 ```
 
-The generated file will be `sql_dump.sql` at the project root.
+This generates `sql_dump.sql` with full schema + sample data.
 
-### Decisions I made and why
-- **AI tools I used**: Used an LLM to help draft the JSON-only prompt formats and to sanity-check example outputs (intent/entities, steps, and channel-specific messages). I kept the app functional without an API key by adding heuristic fallbacks so the project can always run for review.
-- **System prompt design**: I constrained outputs to **JSON only**, enumerated **allowed intents**, and required a fixed set of entity keys with `null` for unknowns. This makes parsing predictable and makes downstream risk scoring stable.
-- **One decision I overrode**: Instead of “just trust the model output”, I added server-side normalization (e.g., `amount_kes` normalization and SMS length enforcement) and a heuristics fallback. This reduces demo-breaking failures during evaluation.
-- **One thing that didn’t work as expected**: Some providers wrap JSON in extra text. I fixed this by extracting the first JSON object from the model output and retrying once with a stricter instruction.
+---
 
+## Key Design Decisions
+
+### AI Tools Used
+
+LLM assistance was used for:
+
+- Designing structured JSON output formats
+- Validating intent/entity extraction patterns
+- Generating example responses for messaging formats
+
+Fallback logic ensures the system works even without external API access.
+
+### System Prompt Design
+
+- Strict JSON-only output enforcement
+- Fixed intent taxonomy:
+  - `send_money`
+  - `hire_service`
+  - `verify_document`
+  - `airport_transfer`
+  - `check_status`
+- Structured entity extraction for reliable parsing
+- Designed for deterministic backend processing
+
+### Server-Side Control Decisions
+
+Instead of fully trusting LLM output:
+
+- Added server-side validation and normalization
+- Enforced SMS length constraints
+- Sanitized monetary values
+- Ensured safe fallback logic for missing fields
+
+This improves reliability during evaluation.
+
+### Failure Handling
+
+Some LLM providers return malformed JSON or wrapped outputs.
+
+**Solution:**
+- Extract first valid JSON block
+- Retry once with stricter prompt rules
+- Fallback to deterministic parser if needed
+
+---
+
+## What I Learned
+
+- Designing structured AI workflows is more important than raw prompting
+- Deterministic fallback systems improve reliability in production-like systems
+- Risk scoring must be explainable and auditable, not black-box ML
+- Real-world systems require hybrid AI + rules-based architecture
+
+---
+
+## Notes
+
+- No external deployment required for evaluation
+- Fully runnable locally
+- Designed to work with or without API key
+- Built for clarity, explainability, and auditability
